@@ -33,6 +33,7 @@ import { ModelContext } from './model-context.jsx';
 import { NetworkInterfaceMembers } from "./network-interface-members.jsx";
 import { NetworkAction } from './dialogs-common.jsx';
 import { NetworkPlots } from "./plots";
+import { WiFiPage } from './wifi.jsx';
 import { fmt_to_fragments } from 'utils.jsx';
 
 import {
@@ -178,6 +179,8 @@ export const NetworkInterfacePage = ({
                 desc = _("VLAN");
             } else if (dev.DeviceType == 'bridge') {
                 desc = _("Bridge");
+            } else if (dev.DeviceType == '802-11-wireless') {
+                desc = _("WiFi");
             } else if (dev.Driver == 'wireguard') {
                 desc = "WireGuard";
             } else
@@ -192,6 +195,8 @@ export const NetworkInterfacePage = ({
                 desc = _("VLAN");
             else if (cs.type == "bridge")
                 desc = _("Bridge");
+            else if (cs.type == "802-11-wireless")
+                desc = _("WiFi");
             else if (cs.type == "wireguard")
                 desc = "WireGuard";
             else if (cs.type)
@@ -565,6 +570,29 @@ export const NetworkInterfacePage = ({
             return renderSettingsRow(_("WireGuard"), rows, configure);
         }
 
+        function renderWiFiSettingsRow() {
+            const rows = [];
+            const wifi = settings.wifi;
+
+            if (!wifi) {
+                return null;
+            }
+
+            function addRow(fmt, args) {
+                rows.push(cockpit.format(fmt, args));
+            }
+
+            addRow(_("SSID $ssid"), { ssid: wifi.ssid });
+            if (wifi.mode) {
+                const modeText = wifi.mode === "ap" ? _("Access Point") : _("Client");
+                addRow(_("Mode $mode"), { mode: modeText });
+            }
+
+            const configure = <NetworkAction type="wifi" iface={iface} connectionSettings={settings} />;
+
+            return renderSettingsRow(_("WiFi"), rows, configure);
+        }
+
         return [
             render_group(),
             renderAutoconnectRow(),
@@ -578,6 +606,7 @@ export const NetworkInterfacePage = ({
             renderTeamSettingsRow(),
             renderTeamPortSettingsRow(),
             renderWireGuardSettingsRow(),
+            renderWiFiSettingsRow(),
         ];
     }
 
@@ -698,6 +727,14 @@ export const NetworkInterfacePage = ({
     const settingsRows = renderConnectionSettingsRows(iface.MainConnection, connectionSettings)
             .map((component, idx) => <React.Fragment key={idx}>{component}</React.Fragment>);
 
+    function renderWiFiNetworks() {
+        // Only show WiFi networks card for WiFi devices
+        if (!dev || dev.DeviceType !== '802-11-wireless')
+            return null;
+
+        return <WiFiPage iface={iface} dev={dev} />;
+    }
+
     return (
         <Page id="network-interface"
               data-test-wait={operationInProgress}
@@ -752,6 +789,7 @@ export const NetworkInterfacePage = ({
                         }
                     </Card>
                     {renderConnectionMembers(iface.MainConnection)}
+                    {renderWiFiNetworks()}
                 </Gallery>
             </PageSection>
         </Page>
