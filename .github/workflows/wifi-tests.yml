@@ -1,0 +1,73 @@
+name: WiFi Tests
+
+on:
+  pull_request:
+    paths:
+      - 'pkg/networkmanager/**'
+      - 'test/verify/check-networkmanager-wifi'
+  push:
+    branches:
+      - main
+      - wifi
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for bots
+
+      - name: Set up test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libglib2.0-dev \
+            gettext \
+            libsystemd-dev \
+            libpolkit-gobject-1-dev \
+            libpcp3-dev \
+            libjson-glib-dev \
+            libpam0g-dev \
+            libkrb5-dev \
+            libxslt1-dev \
+            libssh-dev \
+            python3 \
+            python3-pip \
+            nodejs \
+            npm \
+            qemu-system-x86 \
+            qemu-kvm \
+            virtinst \
+            libvirt-daemon-system
+
+          # Enable KVM
+          sudo modprobe kvm || true
+          sudo chmod 666 /dev/kvm || true
+
+      - name: Prepare test environment
+        run: |
+          test/common/make-bots
+
+          # Download test image (uses default Fedora)
+          test/image-prepare
+
+      - name: Run WiFi integration tests
+        run: |
+          # Run only WiFi tests
+          test/verify/check-networkmanager-wifi --verbose --trace 2>&1 | tee wifi-test.log
+        continue-on-error: true
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            wifi-test.log
+            test/*.log
+            test/verify/*.log

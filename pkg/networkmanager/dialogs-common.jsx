@@ -38,7 +38,7 @@ import { TeamDialog, getGhostSettings as getTeamGhostSettings } from './team.jsx
 import { TeamPortDialog } from './teamport.jsx';
 import { VlanDialog, getGhostSettings as getVlanGhostSettings } from './vlan.jsx';
 import { WireGuardDialog, getWireGuardGhostSettings } from './wireguard.jsx';
-import { WiFiConnectDialog, getWiFiGhostSettings } from './wifi.jsx';
+import { WiFiConnectDialog, WiFiAPDialog, getWiFiGhostSettings, getWiFiAPGhostSettings } from './wifi.jsx';
 import { MtuDialog } from './mtu.jsx';
 import { MacDialog } from './mac.jsx';
 import { ModalError } from 'cockpit-components-inline-notification.jsx';
@@ -195,6 +195,7 @@ export const NetworkAction = ({ buttonText, iface, connectionSettings, type }) =
         if (type == 'bridge') settings = getBridgeGhostSettings({ newIfaceName });
         if (type == 'wg') settings = getWireGuardGhostSettings({ newIfaceName });
         if (type == 'wifi') settings = getWiFiGhostSettings({ newIfaceName });
+        if (type == 'wifi-ap') settings = getWiFiAPGhostSettings({ newIfaceName, dev });
     }
 
     const properties = { connection: con, dev, settings };
@@ -232,6 +233,8 @@ export const NetworkAction = ({ buttonText, iface, connectionSettings, type }) =
             dlg = <WireGuardDialog {...properties} />;
         else if (type == 'wifi')
             dlg = <WiFiConnectDialog {...properties} />;
+        else if (type == 'wifi-ap')
+            dlg = <WiFiAPDialog {...properties} />;
         else if (type == 'mtu')
             dlg = <MtuDialog {...properties} />;
         else if (type == 'mac')
@@ -290,12 +293,39 @@ export const dialogSave = ({ model, dev, connection, members, membersInit, setti
                                  settings,
                                  type)
             : apply_settings(settings))
-                .then(() => {
+                .then((result) => {
                     onClose();
                     if (connection)
                         cockpit.location.go([iface]);
                     if (connection && dev && dev.ActiveConnection && dev.ActiveConnection.Connection === connection)
                         return reactivateConnection({ con: connection, dev });
+
+                    // Auto-activate new WiFi connections
+                    if (!connection && settings.wifi && dev && result) {
+                        // Deactivate conflicting WiFi connection first (AP <-> client mode switching)
+                        if (dev.ActiveConnection && dev.ActiveConnection.Connection) {
+                            const activeConn = dev.ActiveConnection.Connection;
+                            const activeMode = activeConn.Settings?.["802-11-wireless"]?.mode?.v;
+                            const newMode = settings.wifi.mode;
+
+                            // If switching between AP and client mode, deactivate the old connection
+                            if (activeMode && newMode && activeMode !== newMode) {
+                                return dev.ActiveConnection.deactivate()
+                                        .then(() => result.activate(dev, null))
+                                        .catch(err => {
+                                            console.warn("Failed to auto-activate WiFi connection after mode switch:", err);
+                                            // Connection created successfully, user can activate manually
+                                        });
+                            }
+                        }
+
+                        // No conflict, just activate
+                        return result.activate(dev, null)
+                                .catch(err => {
+                                    console.warn("Failed to auto-activate WiFi connection:", err);
+                                    // Connection created successfully, user can activate manually
+                                });
+                    }
                 })
                 .catch(ex => setDialogError(typeof ex === 'string' ? ex : ex.message))
                 .then(() => model.set_operation_in_progress(false));
